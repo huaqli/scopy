@@ -297,11 +297,11 @@ void LogicAnalyzer::setData(const uint16_t * const data, int size)
 	memcpy(m_buffer, data, size * sizeof(uint16_t));
 	Q_EMIT dataAvailable(0, size);
 
-	if (m_oscPlot) {
-		QMetaObject::invokeMethod(this, [=](){
-			m_oscPlot->replot();
-		}, Qt::QueuedConnection);
-	}
+//	if (m_oscPlot) {
+//		QMetaObject::invokeMethod(this, [=](){
+//			m_oscPlot->replot();
+//		}, Qt::QueuedConnection);
+//	}
 
 }
 

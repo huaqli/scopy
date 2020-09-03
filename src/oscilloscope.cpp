@@ -63,6 +63,7 @@
 #include "filemanager.h"
 #include "scopyExceptionHandler.h"
 #include "oscilloscope_api.hpp"
+#include "mixed_signal_sink.h"
 
 #include "runsinglewidget.h"
 
@@ -78,6 +79,8 @@
 #include "ui_trigger_settings.h"
 
 #include <functional>
+
+#include <m2k/mixed_signal_source.h>
 
 #define MAX_MATH_CHANNELS 4
 #define MAX_MATH_RANGE SHRT_MAX
@@ -1284,52 +1287,40 @@ void Oscilloscope::setFilteringEnabled(bool set)
 
 void Oscilloscope::enableMixedSignalView()
 {
+	const bool iioStarted = isIioManagerStarted();
+	if (iioStarted) {
+		iio->lock();
+	}
+
 	m_mixedSignalViewEnabled = true;
 
-	m_mixedSignalViewMenu = m_logicAnalyzer->enableMixedSignalView(&plot,
-										    nb_channels + nb_math_channels + nb_ref_channels);
+	m_mixedSignalViewMenu = m_logicAnalyzer->enableMixedSignalView(&plot, nb_channels +
+								       nb_math_channels + nb_ref_channels);
 
-//	ui->logicSettingsWidget->addTab(m_mixedSignalViewMenu[0], "General");
-//	ui->logicSettingsWidget->addTab(m_mixedSignalViewMenu[1], "Channel");
 	ui->logicSettingsLayout->addWidget(m_mixedSignalViewMenu[0]);
 
+	mixed_sink = mixed_signal_sink::make(m_logicAnalyzer, &this->plot, active_sample_count);
 
+	mixed_source = gr::m2k::mixed_signal_source::make_from(m_m2k_context, active_sample_count);
 
-	// configure flowgraph for logic acquisition
-	// soure block does not close context on ~destructor()
-	logic_top_block = gr::make_top_block("LA_MIXED");
+	// enable the mixed_source in the iio_manager
+	iio->enableMixedSignal(mixed_source);
 
-	logic_source = gr::m2k::digital_in_source::make_from(m_m2k_context,
-								 active_sample_count,
-								 0 /*not used*/,
-								 active_sample_rate,
-								 64,
-								 false,
-								 false);
+	boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
 
+	// connect analog
+	for (int i = 0; i < nb_channels; ++i) {
+		iio->disconnect(block, i, qt_time_block, i);
+		iio->connect(block, i, mixed_sink, i);
+	}
 
-//	logic_source->set_sync_with_analog(true);
+	// connect digital
+	iio->connect(mixed_source, 2, mixed_sink, 2);
 
-	logic_sink = logic_analyzer_sink::make(m_logicAnalyzer, active_sample_count);
-//	logic_top_block->connect(logic_source, 0, logic_sink, 0);
-	iio->connect(logic_source, 0, logic_sink, 0);
-
-	boost::shared_ptr<adc_sample_conv> block =
-	dynamic_pointer_cast<adc_sample_conv>(
-					adc_samp_conv_block);
-
-	s2f = gr::blocks::short_to_float::make();
-	add = gr::blocks::add_ff::make();
-	nullSink = gr::blocks::null_sink::make(sizeof(float));
-
-	// hack #################
-	iio->connect(logic_source, 0, s2f, 0);
-	iio->connect(s2f, 0, add, 0);
-	iio->connect(block, 0, add, 1);
-	iio->connect(add, 0, nullSink, 0);
-	// hack #################
-
-//	m_m2k_context->startMixedSignalAcquisition(active_sample_count);
+	if (iioStarted) {
+		setDigitalPlotCurvesParams();
+		iio->unlock();
+	}
 }
 
 void Oscilloscope::disableMixedSignalView()
@@ -1348,32 +1339,20 @@ void Oscilloscope::disableMixedSignalView()
 
 	m_mixedSignalViewMenu[0]->deleteLater();
 
-	// clear gnuradio logic flowgraph
-	iio->disconnect(logic_source, 0, logic_sink, 0);
+	// disable the mixed_source in the iio_manager
+	iio->disableMixedSignal(mixed_source);
 
-	boost::shared_ptr<adc_sample_conv> block =
-	dynamic_pointer_cast<adc_sample_conv>(
-					adc_samp_conv_block);
+	boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
 
-	// hack ###################################
-	iio->disconnect(logic_source, 0, s2f, 0);
-	iio->disconnect(s2f, 0, add, 0);
-	iio->disconnect(block, 0, add, 1);
-	iio->disconnect(add, 0, nullSink, 0);
-	// hack ###################################
+	// disconnect analog
+	for (int i = 0; i < nb_channels; ++i) {
+		iio->disconnect(block, i, mixed_sink, i);
+		iio->connect(block, i, qt_time_block, i);
+	}
 
-	logic_top_block->disconnect_all();
-	logic_top_block = nullptr;
-	logic_sink = nullptr;
-	logic_source = nullptr;
+	// disconnect digital
+	iio->disconnect(mixed_source, 2, mixed_sink, 2);
 
-	// remove widgets
-//	while (ui->logicSettingsLayout->count()) {
-//		auto item = ui->logicSettingsLayout->takeAt(0);
-//		if (item && item->widget()) {
-//			ui->logicSettingsLayout->removeWidget(item->widget());
-//		}
-//	}
 	if (iioStarted) {
 		iio->unlock();
 	}
@@ -1581,8 +1560,8 @@ void Oscilloscope::activateAcCoupling(int i)
 		iio->set_buffer_size(ids[ch], active_sample_count);
 		dc_cancel.at(ch)->set_buffer_size(active_sample_count);
 	}
-	if (logic_source) {
-		logic_source->set_buffer_size(active_sample_count);
+	if (mixed_source) {
+		mixed_source->set_buffer_size(active_sample_count);
 		setDigitalPlotCurvesParams();
 	}
 	if(started) {
@@ -1678,8 +1657,8 @@ void Oscilloscope::deactivateAcCoupling(int i)
 		iio->set_buffer_size(ids[ch], active_sample_count);
 		dc_cancel.at(ch)->set_buffer_size(active_sample_count);
 	}
-	if (logic_source) {
-		logic_source->set_buffer_size(active_sample_count);
+	if (mixed_source) {
+		mixed_source->set_buffer_size(active_sample_count);
 		setDigitalPlotCurvesParams();
 	}
 
@@ -2630,31 +2609,33 @@ void Oscilloscope::toggle_blockchain_flow(bool en)
 {
 	if (en) {
 
-		if (logic_source) {
+		if (mixed_source) {
 			// set digital params; analog should be already set when this method is called
 			setDigitalPlotCurvesParams();
 
-			// clear data in sink blocks (analog + digital)
-			qt_time_block->clean_buffers();
-			qt_time_block->set_nsamps(active_sample_count);
+			mixed_sink->clean_buffers();
 
-			logic_sink->clean_buffers();
-			logic_sink->set_nsamps(active_sample_count);
+//			// clear data in sink blocks (analog + digital)
+//			qt_time_block->clean_buffers();
+//			qt_time_block->set_nsamps(active_sample_count);
 
-			// flush device buffers
-//			m_m2k_digital->reset();
-//			m_m2k_analogin->reset();
-//			m_m2k_context->
+//			logic_sink->clean_buffers();
+//			logic_sink->set_nsamps(active_sample_count);
 
-			// set kernel buffers
-			m_m2k_digital->setKernelBuffersCountIn(64);
-			m_m2k_analogin->setKernelBuffersCount(64);
+//			// flush device buffers
+////			m_m2k_digital->reset();
+////			m_m2k_analogin->reset();
+////			m_m2k_context->
 
-			// start mixed signal acquisition
-//			m_m2k_analogin->cancelAcquisition();
-//			m_m2k_analogin->stopAcquisition();
-//			m_m2k_context->stopMixedSignalAcquisition();
-			m_m2k_context->startMixedSignalAcquisition(active_sample_count);
+//			// set kernel buffers
+//			m_m2k_digital->setKernelBuffersCountIn(64);
+//			m_m2k_analogin->setKernelBuffersCount(64);
+
+//			// start mixed signal acquisition
+////			m_m2k_analogin->cancelAcquisition();
+////			m_m2k_analogin->stopAcquisition();
+////			m_m2k_context->stopMixedSignalAcquisition();
+//			m_m2k_context->startMixedSignalAcquisition(active_sample_count);
 		}
 
 		if (autosetRequested) {
@@ -2675,9 +2656,9 @@ void Oscilloscope::toggle_blockchain_flow(bool en)
 			iio->stop(autoset_id[0]);			
 		}
 
-		if (logic_source) {
-			m_m2k_context->stopMixedSignalAcquisition();
-		}
+//		if (mixed_source) {
+//			m_m2k_context->stopMixedSignalAcquisition();
+//		}
 	}
 }
 
@@ -3351,8 +3332,8 @@ void Oscilloscope::onCmbMemoryDepthChanged(QString value)
 		iio->set_buffer_size(ids[i], active_sample_count);
 		dc_cancel.at(i)->set_buffer_size(active_sample_count);
 	}
-	if (logic_source) {
-		logic_source->set_buffer_size(active_sample_count);
+	if (mixed_source) {
+		mixed_source->set_buffer_size(active_sample_count);
 		setDigitalPlotCurvesParams();
 	}
 
@@ -3475,8 +3456,8 @@ void adiscope::Oscilloscope::onHorizScaleValueChanged(double value)
 		dc_cancel.at(i)->set_buffer_size(active_sample_count);
 	}
 
-	if (logic_source) {
-		logic_source->set_buffer_size(active_sample_count);
+	if (mixed_source) {
+		mixed_source->set_buffer_size(active_sample_count);
 		setDigitalPlotCurvesParams();
 	}
 
@@ -3657,8 +3638,8 @@ void adiscope::Oscilloscope::onTimePositionChanged(double value)
 		iio->set_buffer_size(ids[i], active_sample_count);
 		dc_cancel.at(i)->set_buffer_size(active_sample_count);
 	}
-	if (logic_source) {
-		logic_source->set_buffer_size(active_sample_count);
+	if (mixed_source) {
+		mixed_source->set_buffer_size(active_sample_count);
 		setDigitalPlotCurvesParams();
 	}
 
@@ -4543,8 +4524,8 @@ void Oscilloscope::setupAutosetFreqSweep()
 		iio->set_buffer_size(ids[i], autoset_fft_size);
 		dc_cancel.at(i)->set_buffer_size(active_sample_count);
 	}
-	if (logic_source) {
-		logic_source->set_buffer_size(active_sample_count);
+	if (mixed_source) {
+		mixed_source->set_buffer_size(active_sample_count);
 		setDigitalPlotCurvesParams();
 	}
 	if (keep_one) {
@@ -4624,7 +4605,7 @@ void Oscilloscope::requestAutoset()
 void Oscilloscope::periodicFlowRestart(bool force)
 {
 	static uint64_t restartFlowCounter = 0;
-	const uint64_t NO_FLOW_BUFFERS = 64;
+	const uint64_t NO_FLOW_BUFFERS = 1024;
 	if(force) {
 		restartFlowCounter = NO_FLOW_BUFFERS;
 	}
@@ -4634,8 +4615,8 @@ void Oscilloscope::periodicFlowRestart(bool force)
 		QElapsedTimer t;
 		t.start();
 		iio->lock();
-		m_m2k_context->stopMixedSignalAcquisition();
-		m_m2k_context->startMixedSignalAcquisition(active_sample_count);
+//		m_m2k_context->stopMixedSignalAcquisition();
+//		m_m2k_context->startMixedSignalAcquisition(active_sample_count);
 		iio->unlock();
 		qDebug(CAT_OSCILLOSCOPE)<<"Restarted flow @ " << QTime::currentTime().toString("hh:mm:ss") <<"restart took " << t.elapsed() << "ms";
 	}
