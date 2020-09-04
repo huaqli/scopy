@@ -1369,7 +1369,7 @@ void Oscilloscope::setDigitalPlotCurvesParams()
 	for (int i = 0; i < plot.getNrDigitalPlotCurves(); ++i) {
 		QwtPlotCurve *curve = plot.getDigitalPlotCurve(i);
 		GenericLogicPlotCurve *logic_curve = dynamic_cast<GenericLogicPlotCurve *>(curve);
-		logic_curve->reset();
+//		logic_curve->reset();
 
 		logic_curve->setSampleRate(active_sample_rate);
 		logic_curve->setBufferSize(active_sample_count);
@@ -2619,8 +2619,8 @@ void Oscilloscope::toggle_blockchain_flow(bool en)
 //			qt_time_block->clean_buffers();
 //			qt_time_block->set_nsamps(active_sample_count);
 
-//			logic_sink->clean_buffers();
-//			logic_sink->set_nsamps(active_sample_count);
+//			mixed_sink->clean_buffers();
+//			mixed_sink->set_nsamps(active_sample_count);
 
 //			// flush device buffers
 ////			m_m2k_digital->reset();
@@ -3596,6 +3596,10 @@ void adiscope::Oscilloscope::onTimePositionChanged(double value)
 	if (started) {
 		trigger_settings.setTriggerDelay(active_trig_sample_count);
 		last_set_time_pos = active_time_pos;
+
+		if (mixed_source) {
+			setDigitalPlotCurvesParams();
+		}
 	}
 	updateBufferPreviewer();
 	if (reset_horiz_offset) {
@@ -4971,8 +4975,8 @@ void Oscilloscope::setAllSinksSampleCount(unsigned long sample_count)
 	this->qt_xy_block->set_nsamps(sample_count);
 	this->qt_hist_block->set_nsamps(sample_count);
 
-	if (logic_sink) {
-		logic_sink->set_nsamps(sample_count);
+	if (mixed_sink) {
+		mixed_sink->set_nsamps(sample_count);
 	}
 
 	auto it = math_sinks.constBegin();

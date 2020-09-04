@@ -129,6 +129,8 @@ void mixed_signal_sink_impl::set_nsamps(int newsize)
 			volk_free(d_analog_plot_buffers[i]);
 
 		}
+		d_analog_buffer.clear();
+		d_analog_plot_buffers.clear();
 
 		// create new buffers
 		d_digital_buffer = static_cast<uint16_t*>(volk_malloc(d_buffer_size * sizeof(uint16_t), volk_get_alignment()));

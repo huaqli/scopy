@@ -41,7 +41,8 @@ iio_manager::iio_manager(unsigned int block_id,
 	top_block("IIO Manager " + std::to_string(block_id)),
 	id(block_id), _started(false), buffer_size(_buffer_size),
 	m_analogin(libm2k::context::m2kOpen(ctx, "")->getAnalogIn()),
-	m_context(libm2k::context::m2kOpen(ctx, ""))
+	m_context(libm2k::context::m2kOpen(ctx, "")),
+	m_mixed_source(nullptr)
 {
 	if (!ctx)
 		throw std::runtime_error("IIO context not created");
@@ -203,6 +204,9 @@ void iio_manager::update_buffer_size_unlocked()
 
 	if (size) {
 		iio_block->set_buffer_size(size);
+		if (m_mixed_source) {
+			m_mixed_source->set_buffer_size(size);
+		}
 		this->buffer_size = size;
 	}
 }
@@ -359,6 +363,9 @@ void iio_manager::got_timeout()
 void iio_manager::set_device_timeout(unsigned int mseconds)
 {
 	iio_block->set_timeout_ms(mseconds);
+	if (m_mixed_source) {
+		m_mixed_source->set_timeout_ms(mseconds);
+	}
 }
 
 void iio_manager::enableMixedSignal(m2k::mixed_signal_source::sptr mixed_source)
@@ -370,6 +377,8 @@ void iio_manager::enableMixedSignal(m2k::mixed_signal_source::sptr mixed_source)
 
 	hier_block2::msg_disconnect(iio_block, "msg", timeout_b, "msg");
 	hier_block2::msg_connect(mixed_source, "msg", timeout_b, "msg");
+
+	m_mixed_source = mixed_source;
 }
 
 void iio_manager::disableMixedSignal(m2k::mixed_signal_source::sptr mixed_source)
@@ -381,4 +390,6 @@ void iio_manager::disableMixedSignal(m2k::mixed_signal_source::sptr mixed_source
 
 	hier_block2::msg_disconnect(mixed_source, "msg", timeout_b, "msg");
 	hier_block2::msg_connect(iio_block, "msg", timeout_b, "msg");
+
+	m_mixed_source = nullptr;
 }

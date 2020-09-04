@@ -152,6 +152,7 @@ namespace adiscope {
 		unsigned int nb_channels;
 
 		boost::shared_ptr<timeout_block> timeout_b;
+		gr::m2k::mixed_signal_source::sptr m_mixed_source;
 
 		struct connection {
 			gr::basic_block_sptr src;
