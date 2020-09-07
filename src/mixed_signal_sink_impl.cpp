@@ -73,12 +73,12 @@ int mixed_signal_sink_impl::work(int noutput_items,
 	if (d_triggered && (d_index == d_end) && d_end != 0) {
 		if (gr::high_res_timer_now() - d_last_time > d_update_time) {
 			d_last_time = gr::high_res_timer_now();
-			d_logic_analyzer->setData(d_digital_buffer + d_start, d_size);
 
 			for (int i = 0; i < 2; ++i) {
 				volk_32f_convert_64f(d_analog_plot_buffers[i], &d_analog_buffer[i][d_start], d_size);
 			}
 
+			d_logic_analyzer->setData(d_digital_buffer + d_start, d_size);
 			qApp->postEvent(d_osc_plot,
 					new IdentifiableTimeUpdateEvent(d_analog_plot_buffers,
 									d_size,
@@ -86,6 +86,8 @@ int mixed_signal_sink_impl::work(int noutput_items,
 									"Osc Time"));
 
 			qDebug() << "[mixed_sink] Plotted: " << d_size << " samples";
+		} else {
+			qDebug() << "[mixed_sink] skipped: " << d_size << " samples";
 		}
 
 		_reset();

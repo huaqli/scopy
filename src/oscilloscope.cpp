@@ -2614,28 +2614,7 @@ void Oscilloscope::toggle_blockchain_flow(bool en)
 			setDigitalPlotCurvesParams();
 
 			mixed_sink->clean_buffers();
-
-//			// clear data in sink blocks (analog + digital)
-//			qt_time_block->clean_buffers();
-//			qt_time_block->set_nsamps(active_sample_count);
-
-//			mixed_sink->clean_buffers();
-//			mixed_sink->set_nsamps(active_sample_count);
-
-//			// flush device buffers
-////			m_m2k_digital->reset();
-////			m_m2k_analogin->reset();
-////			m_m2k_context->
-
-//			// set kernel buffers
-//			m_m2k_digital->setKernelBuffersCountIn(64);
-//			m_m2k_analogin->setKernelBuffersCount(64);
-
-//			// start mixed signal acquisition
-////			m_m2k_analogin->cancelAcquisition();
-////			m_m2k_analogin->stopAcquisition();
-////			m_m2k_context->stopMixedSignalAcquisition();
-//			m_m2k_context->startMixedSignalAcquisition(active_sample_count);
+			mixed_sink->set_nsamps(active_sample_count);
 		}
 
 		if (autosetRequested) {
@@ -2655,10 +2634,6 @@ void Oscilloscope::toggle_blockchain_flow(bool en)
 		if (autosetRequested) {
 			iio->stop(autoset_id[0]);			
 		}
-
-//		if (mixed_source) {
-//			m_m2k_context->stopMixedSignalAcquisition();
-//		}
 	}
 }
 
