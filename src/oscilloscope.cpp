@@ -1303,21 +1303,22 @@ void Oscilloscope::enableMixedSignalView()
 
 	mixed_source = gr::m2k::mixed_signal_source::make_from(m_m2k_context, active_sample_count);
 
-	// enable the mixed_source in the iio_manager
-	iio->enableMixedSignal(mixed_source);
-
-	boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
-
-	// connect analog
-	for (int i = 0; i < nb_channels; ++i) {
-		iio->disconnect(block, i, qt_time_block, i);
-		iio->connect(block, i, mixed_sink, i);
-	}
-
-	// connect digital
-	iio->connect(mixed_source, 2, mixed_sink, 2);
-
 	if (iioStarted) {
+		// enable the mixed_source in the iio_manager
+		iio->enableMixedSignal(mixed_source);
+
+		boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
+
+		// connect analog
+		for (int i = 0; i < nb_channels; ++i) {
+			iio->disconnect(block, i, qt_time_block, i);
+			iio->connect(block, i, mixed_sink, i);
+		}
+
+		// connect digital
+		iio->connect(mixed_source, 2, mixed_sink, 2);
+
+
 		setDigitalPlotCurvesParams();
 		iio->unlock();
 	}
@@ -1339,23 +1340,26 @@ void Oscilloscope::disableMixedSignalView()
 
 	m_mixedSignalViewMenu[0]->deleteLater();
 
-	// disable the mixed_source in the iio_manager
-	iio->disableMixedSignal(mixed_source);
-
-	boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
-
-	// disconnect analog
-	for (int i = 0; i < nb_channels; ++i) {
-		iio->disconnect(block, i, mixed_sink, i);
-		iio->connect(block, i, qt_time_block, i);
-	}
-
-	// disconnect digital
-	iio->disconnect(mixed_source, 2, mixed_sink, 2);
-
 	if (iioStarted) {
+		// disable the mixed_source in the iio_manager
+		iio->disableMixedSignal(mixed_source);
+
+		boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
+
+		// disconnect analog
+		for (int i = 0; i < nb_channels; ++i) {
+			iio->disconnect(block, i, mixed_sink, i);
+			iio->connect(block, i, qt_time_block, i);
+		}
+
+		// disconnect digital
+		iio->disconnect(mixed_source, 2, mixed_sink, 2);
+
 		iio->unlock();
 	}
+
+	mixed_sink = nullptr;
+	mixed_source = nullptr;
 }
 
 void Oscilloscope::setDigitalPlotCurvesParams()
@@ -2609,7 +2613,21 @@ void Oscilloscope::toggle_blockchain_flow(bool en)
 {
 	if (en) {
 
-		if (mixed_source) {
+		if (m_mixedSignalViewEnabled) {
+			// enable the mixed_source in the iio_manager
+			iio->enableMixedSignal(mixed_source);
+
+			boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
+
+			// connect analog
+			for (int i = 0; i < nb_channels; ++i) {
+				iio->disconnect(block, i, qt_time_block, i);
+				iio->connect(block, i, mixed_sink, i);
+			}
+
+			// connect digital
+			iio->connect(mixed_source, 2, mixed_sink, 2);
+
 			// set digital params; analog should be already set when this method is called
 			setDigitalPlotCurvesParams();
 
@@ -2633,6 +2651,21 @@ void Oscilloscope::toggle_blockchain_flow(bool en)
 
 		if (autosetRequested) {
 			iio->stop(autoset_id[0]);			
+		}
+
+		if (m_mixedSignalViewEnabled) {
+			iio->disableMixedSignal(mixed_source);
+
+			boost::shared_ptr<adc_sample_conv> block = dynamic_pointer_cast<adc_sample_conv>(adc_samp_conv_block);
+
+			// disconnect analog
+			for (int i = 0; i < nb_channels; ++i) {
+				iio->disconnect(block, i, mixed_sink, i);
+				iio->connect(block, i, qt_time_block, i);
+			}
+
+			// disconnect digital
+			iio->disconnect(mixed_source, 2, mixed_sink, 2);
 		}
 	}
 }

@@ -84,10 +84,6 @@ int mixed_signal_sink_impl::work(int noutput_items,
 									d_size,
 									d_tags,
 									"Osc Time"));
-
-			qDebug() << "[mixed_sink] Plotted: " << d_size << " samples";
-		} else {
-			qDebug() << "[mixed_sink] skipped: " << d_size << " samples";
 		}
 
 		_reset();
